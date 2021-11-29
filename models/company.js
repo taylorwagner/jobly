@@ -46,18 +46,56 @@ class Company {
 
   /** Find all companies.
    *
+   * searchFilters (all optional):
+   * - minEmployees
+   * - maxEmployees
+   * - name (will find case-insensitive, partial matches)
+   *
    * Returns [{ handle, name, description, numEmployees, logoUrl }, ...]
    * */
 
-  static async findAll() {
-    const companiesRes = await db.query(
-          `SELECT handle,
-                  name,
-                  description,
-                  num_employees AS "numEmployees",
-                  logo_url AS "logoUrl"
-           FROM companies
-           ORDER BY name`);
+  static async findAll(searchFilters = {}) {
+    let q = `SELECT handle,
+                    name,
+                    description,
+                    num_employees AS "numEmployees",
+                    logo_url AS "logoURL"
+              FROM companies`;
+    let whereExpressions = [];
+    let queryVals = [];
+
+    const { minEmployees, maxEmployees, name } = searchFilters;
+
+    if (minEmployees > maxEmployees) {
+      throw new BadRequestError("Min employees cannot be graeter than max");
+    }
+
+    // For each possible search term, add to whereExpressions and queryVals so the right SQL can be generated
+
+
+    if (minEmployees !== undefined) {
+      queryVals.push(minEmployees);
+      whereExpressions.push(`num_employees >= $${queryVals.length}`);
+    }
+
+    if (maxEmployees !== undefined) {
+      queryVals.push(maxEmployees);
+      whereExpressions.push(`num_employees <= $${queryVals.length}`);
+    }
+
+    if (name) {
+      queryVals.push(`%${name}%`);
+      whereExpressions.push(`name ILIKE $${queryVals.length}`);
+    }
+
+    if (whereExpressions.length > 0) {
+      q += " WHERE " + whereExpressions.join(" AND ");
+    }
+
+    // Finalize query and return results
+
+    q += " ORDER BY name ";
+    const companiesRes = await db.query(q, queryVals);
     return companiesRes.rows;
   }
 
